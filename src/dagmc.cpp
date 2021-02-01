@@ -98,8 +98,9 @@ bool write_uwuw_materials_xml() {
   return found_uwuw_mats;
 }
 
-void legacy_assign_material(std::string mat_string, DAGCell* c)
+int legacy_assign_material(std::string mat_string)
 {
+  int mat_id;
   bool mat_found_by_name = false;
   // attempt to find a material with a matching name
   to_lower(mat_string);
@@ -110,7 +111,7 @@ void legacy_assign_material(std::string mat_string, DAGCell* c)
       // assign the material with that name
       if (!mat_found_by_name) {
         mat_found_by_name = true;
-        c->material_.push_back(m->id_);
+        mat_id = m->id_;
       // report error if more than one material is found
       } else {
         fatal_error(fmt::format(
@@ -125,15 +126,15 @@ void legacy_assign_material(std::string mat_string, DAGCell* c)
   if (!mat_found_by_name) {
     try {
       auto id = std::stoi(mat_string);
-      c->material_.emplace_back(id);
+      mat_id = id;
     } catch (const std::invalid_argument&) {
       fatal_error(fmt::format(
-        "No material {} found for volume (cell) {}", mat_string, c->id_));
+        "Could not convert material name {} to id", mat_string));
     }
   }
 
   if (settings::verbosity >= 10) {
-    const auto& m = model::materials[model::material_map.at(c->material_[0])];
+    const auto& m = model::materials[model::material_map.at(mat_id)];
     std::stringstream msg;
     msg << "DAGMC material " << mat_string << " was assigned";
     if (mat_found_by_name) {
@@ -143,6 +144,22 @@ void legacy_assign_material(std::string mat_string, DAGCell* c)
     }
     write_message(msg.str(), 10);
   }
+
+  return mat_id;
+}
+
+int uwuw_assign_material(moab::EntityHandle vol_handle,
+                         std::shared_ptr<dagmcMetaData> dmd_ptr,
+                         std::shared_ptr<UWUW> uwuw_ptr)
+{
+  std::string uwuw_mat = dmd_ptr->volume_material_property_data_eh[vol_handle];
+  if (uwuw_ptr->material_library.count(uwuw_mat) == 0) {
+    fatal_error(fmt::format("Material with value {} not found in the "
+                            "UWUW material library", uwuw_mat));
+  }
+
+  // Note: material numbers are set by UWUW
+  return uwuw_ptr->material_library.get_material(uwuw_mat).metadata["mat_number"].asInt();
 }
 
 void load_dagmc_geometry()
@@ -258,40 +275,12 @@ void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
       model::universes[it->second]->cells_.push_back(i);
     }
 
-    // MATERIALS
+    // Set cell material
+    int mat_id = get_material_id(vol_handle,dmd_ptr,using_uwuw,
+                                 uwuw_ptr,graveyard);
 
-    // determine volume material assignment
-    std::string mat_str = dmd_ptr->get_volume_property("material", vol_handle);
+    c->material_.push_back(mat_id);
 
-    if (mat_str.empty()) {
-      fatal_error(fmt::format("Volume {} has no material assignment.", c->id_));
-    }
-
-    to_lower(mat_str);
-
-    if (mat_str == "graveyard") {
-      graveyard = vol_handle;
-    }
-
-    // material void checks
-    if (mat_str == "void" || mat_str == "vacuum" || mat_str == "graveyard") {
-      c->material_.push_back(MATERIAL_VOID);
-    } else {
-      if (using_uwuw) {
-        // lookup material in uwuw if present
-        std::string uwuw_mat = dmd_ptr->volume_material_property_data_eh[vol_handle];
-        if (uwuw_ptr->material_library.count(uwuw_mat) != 0) {
-          // Note: material numbers are set by UWUW
-          int mat_number = uwuw_ptr->material_library.get_material(uwuw_mat).metadata["mat_number"].asInt();
-          c->material_.push_back(mat_number);
-        } else {
-          fatal_error(fmt::format("Material with value {} not found in the "
-            "UWUW material library", mat_str));
-        }
-      } else {
-        legacy_assign_material(mat_str, c);
-      }
-    }
 
     // check for temperature assignment
     std::string temp_value;
@@ -376,6 +365,41 @@ void init_dagmc_surfaces(std::shared_ptr<dagmcMetaData> dmd_ptr,
     model::surfaces.emplace_back(s);
     model::surface_map[s->id_] = i;
   }
+}
+
+int get_material_id(moab::EntityHandle vol_handle,
+                    std::shared_ptr<dagmcMetaData> dmd_ptr,
+                    bool using_uwuw,
+                    std::shared_ptr<UWUW> uwuw_ptr,
+                    moab::EntityHandle& graveyard)
+{
+
+  // Determine volume material assignment
+  std::string mat_str = dmd_ptr->get_volume_property("material", vol_handle);
+  if (mat_str.empty()) {
+    fatal_error(fmt::format("Volume handle {} has no material assignment.", vol_handle));
+  }
+  to_lower(mat_str);
+
+
+  // Find id for special case: void material
+  if (mat_str == "void" || mat_str == "vacuum" || mat_str == "graveyard") {
+    // If we found the graveyard, save handle
+    if(mat_str == "graveyard"){
+      graveyard = vol_handle;
+    }
+    return openmc::MATERIAL_VOID;
+  }
+
+  // Find id for non-void mats
+  if (using_uwuw) {
+    // Look up material in uwuw if present
+    return uwuw_assign_material(vol_handle,dmd_ptr,uwuw_ptr);
+  }
+  else {
+    return legacy_assign_material(mat_str);
+  }
+
 }
 
 void read_geometry_dagmc()
