@@ -11,6 +11,8 @@ extern "C" const bool dagmc_enabled;
 #include "DagMC.hpp"
 #include "openmc/xml_interface.h"
 #include "openmc/position.h"
+#include "uwuw.hpp"
+#include "dagmcmetadata.hpp"
 
 namespace openmc {
 
@@ -24,6 +26,8 @@ namespace model {
 
 void load_dagmc_geometry();
 void init_dagmc();
+void init_dagmc_metadata(std::shared_ptr<dagmcMetaData>& dmd_ptr);
+bool init_uwuw_materials(std::shared_ptr<UWUW>& uwuw_ptr);
 void free_memory_dagmc();
 void read_geometry_dagmc();
 bool read_uwuw_materials(pugi::xml_document& doc);

@@ -12,10 +12,6 @@
 #include "openmc/settings.h"
 #include "openmc/surface.h"
 
-#ifdef DAGMC
-#include "uwuw.hpp"
-#include "dagmcmetadata.hpp"
-#endif
 #include <fmt/core.h>
 
 #include <string>
@@ -157,31 +153,15 @@ void load_dagmc_geometry()
 
   // --- Materials ---
 
-  // Create UWUW instance and store pointer
-  std::shared_ptr<UWUW> uwuw_ptr = std::make_shared<UWUW>(dagmc_file().c_str());
+  // Create a material library
+  std::shared_ptr<UWUW> uwuw_ptr;
+  bool using_uwuw = init_uwuw_materials(uwuw_ptr);
 
-  // check for uwuw material definitions
-  bool using_uwuw = !uwuw_ptr->material_library.empty();
-
-  // Notify user if UWUW materials are going to be used
-  if (using_uwuw) {
-    write_message("Found UWUW Materials in the DAGMC geometry file.", 6);
-  }
+  // Parse DAGMC metadata
+  std::shared_ptr<dagmcMetaData> dmd_ptr;
+  init_dagmc_metadata(dmd_ptr);
 
   int32_t dagmc_univ_id = 0; // universe is always 0 for DAGMC runs
-
-  // Create dagmcMetaData pointer
-  std::shared_ptr<dagmcMetaData> dmd_ptr
-    = std::make_shared<dagmcMetaData>(model::DAG, false, false);
-
-  // Parse model metadata
-  dmd_ptr->load_property_data();
-
-  std::vector<std::string> keywords {"temp"};
-  std::map<std::string, std::string> dum;
-  std::string delimiters = ":/";
-  moab::ErrorCode rval = rval = model::DAG->parse_properties(keywords, dum, delimiters.c_str());
-  MB_CHK_ERR_CONT(rval);
 
   // --- Cells (Volumes) ---
 
@@ -257,7 +237,7 @@ void load_dagmc_geometry()
     // assign cell temperature
     const auto& mat = model::materials[model::material_map.at(c->material_[0])];
     if (model::DAG->has_prop(vol_handle, "temp")) {
-      rval = model::DAG->prop_value(vol_handle, "temp", temp_value);
+      moab::ErrorCode rval = model::DAG->prop_value(vol_handle, "temp", temp_value);
       MB_CHK_ERR_CONT(rval);
       double temp = std::stod(temp_value);
       c->sqrtkT_.push_back(std::sqrt(K_BOLTZMANN * temp));
@@ -315,7 +295,7 @@ void load_dagmc_geometry()
 
     // graveyard check
     moab::Range parent_vols;
-    rval = model::DAG->moab_instance()->get_parent_meshsets(surf_handle, parent_vols);
+    moab::ErrorCode rval = model::DAG->moab_instance()->get_parent_meshsets(surf_handle, parent_vols);
     MB_CHK_ERR_CONT(rval);
 
     // if this surface belongs to the graveyard
@@ -334,21 +314,51 @@ void load_dagmc_geometry()
 
 void init_dagmc()
 {
-
   if (!model::DAG) {
     model::DAG = new moab::DagMC();
   }
 
-  // load the DAGMC geometry
+  // Load the DAGMC geometry
   moab::ErrorCode rval = model::DAG->load_file(dagmc_file().c_str());
   MB_CHK_ERR_CONT(rval);
 
-  // initialize acceleration data structures
+  // Initialize acceleration data structures
   rval = model::DAG->init_OBBTree();
   MB_CHK_ERR_CONT(rval);
 
+  // Apply the "temp" keyword tag to any volumes in material groups with this tag
+  std::vector<std::string> keywords {"temp"};
+  std::map<std::string, std::string> dum;
+  std::string delimiters = ":/";
+  rval = model::DAG->parse_properties(keywords, dum, delimiters.c_str());
+  MB_CHK_ERR_CONT(rval);
 }
 
+
+void init_dagmc_metadata(std::shared_ptr<dagmcMetaData>& dmd_ptr)
+{
+  // Create dagmcMetaData pointer
+  dmd_ptr = std::make_shared<dagmcMetaData>(model::DAG, false, false);
+
+  // Parse model metadata
+  dmd_ptr->load_property_data();
+}
+
+bool init_uwuw_materials(std::shared_ptr<UWUW>& uwuw_ptr)
+{
+  // Create UWUW instance and store pointer
+  uwuw_ptr = std::make_shared<UWUW>(dagmc_file().c_str());
+
+  // check for uwuw material definitions
+  bool using_uwuw = !uwuw_ptr->material_library.empty();
+
+  // Notify user if UWUW materials are going to be used
+  if (using_uwuw) {
+    write_message("Found UWUW Materials in the DAGMC geometry file.", 6);
+  }
+
+  return using_uwuw;
+}
 
 void read_geometry_dagmc()
 {
