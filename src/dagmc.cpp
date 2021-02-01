@@ -158,21 +158,24 @@ void load_dagmc_geometry()
   // --- Materials ---
 
   // Create UWUW instance and store pointer
-  std::shared_ptr<UWUW> uwuwPtr = std::make_shared<UWUW>(dagmc_file().c_str());
+  std::shared_ptr<UWUW> uwuw_ptr = std::make_shared<UWUW>(dagmc_file().c_str());
 
   // check for uwuw material definitions
-  bool using_uwuw = !uwuwPtr->material_library.empty();
+  bool using_uwuw = !uwuw_ptr->material_library.empty();
 
-  // notify user if UWUW materials are going to be used
+  // Notify user if UWUW materials are going to be used
   if (using_uwuw) {
     write_message("Found UWUW Materials in the DAGMC geometry file.", 6);
   }
 
   int32_t dagmc_univ_id = 0; // universe is always 0 for DAGMC runs
 
-  // parse model metadata
-  dagmcMetaData DMD(model::DAG, false, false);
-  DMD.load_property_data();
+  // Create dagmcMetaData pointer
+  std::shared_ptr<dagmcMetaData> dmd_ptr
+    = std::make_shared<dagmcMetaData>(model::DAG, false, false);
+
+  // Parse model metadata
+  dmd_ptr->load_property_data();
 
   std::vector<std::string> keywords {"temp"};
   std::map<std::string, std::string> dum;
@@ -213,7 +216,7 @@ void load_dagmc_geometry()
     // MATERIALS
 
     // determine volume material assignment
-    std::string mat_str = DMD.get_volume_property("material", vol_handle);
+    std::string mat_str = dmd_ptr->get_volume_property("material", vol_handle);
 
     if (mat_str.empty()) {
       fatal_error(fmt::format("Volume {} has no material assignment.", c->id_));
@@ -231,10 +234,10 @@ void load_dagmc_geometry()
     } else {
       if (using_uwuw) {
         // lookup material in uwuw if present
-        std::string uwuw_mat = DMD.volume_material_property_data_eh[vol_handle];
-        if (uwuwPtr->material_library.count(uwuw_mat) != 0) {
+        std::string uwuw_mat = dmd_ptr->volume_material_property_data_eh[vol_handle];
+        if (uwuw_ptr->material_library.count(uwuw_mat) != 0) {
           // Note: material numbers are set by UWUW
-          int mat_number = uwuwPtr->material_library.get_material(uwuw_mat).metadata["mat_number"].asInt();
+          int mat_number = uwuw_ptr->material_library.get_material(uwuw_mat).metadata["mat_number"].asInt();
           c->material_.push_back(mat_number);
         } else {
           fatal_error(fmt::format("Material with value {} not found in the "
@@ -293,7 +296,7 @@ void load_dagmc_geometry()
     }
 
     // set BCs
-    std::string bc_value = DMD.get_surface_property("boundary", surf_handle);
+    std::string bc_value = dmd_ptr->get_surface_property("boundary", surf_handle);
     to_lower(bc_value);
     if (bc_value.empty() || bc_value == "transmit" || bc_value == "transmission") {
       // Leave the bc_ a nullptr
