@@ -157,11 +157,11 @@ void load_dagmc_geometry()
 
   // --- Materials ---
 
-  // create uwuw instance
-  UWUW uwuw(dagmc_file().c_str());
+  // Create UWUW instance and store pointer
+  std::shared_ptr<UWUW> uwuwPtr = std::make_shared<UWUW>(dagmc_file().c_str());
 
   // check for uwuw material definitions
-  bool using_uwuw = !uwuw.material_library.empty();
+  bool using_uwuw = !uwuwPtr->material_library.empty();
 
   // notify user if UWUW materials are going to be used
   if (using_uwuw) {
@@ -232,9 +232,9 @@ void load_dagmc_geometry()
       if (using_uwuw) {
         // lookup material in uwuw if present
         std::string uwuw_mat = DMD.volume_material_property_data_eh[vol_handle];
-        if (uwuw.material_library.count(uwuw_mat) != 0) {
+        if (uwuwPtr->material_library.count(uwuw_mat) != 0) {
           // Note: material numbers are set by UWUW
-          int mat_number = uwuw.material_library.get_material(uwuw_mat).metadata["mat_number"].asInt();
+          int mat_number = uwuwPtr->material_library.get_material(uwuw_mat).metadata["mat_number"].asInt();
           c->material_.push_back(mat_number);
         } else {
           fatal_error(fmt::format("Material with value {} not found in the "
