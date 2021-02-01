@@ -27,16 +27,14 @@ namespace model {
 void load_dagmc_geometry();
 void init_dagmc();
 void init_dagmc_metadata(std::shared_ptr<dagmcMetaData>& dmd_ptr);
-bool init_uwuw_materials(std::shared_ptr<UWUW>& uwuw_ptr);
+void init_uwuw_materials(std::shared_ptr<UWUW>& uwuw_ptr);
 void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
-                      bool using_uwuw,
                       std::shared_ptr<UWUW> uwuw_ptr,
                       moab::EntityHandle& graveyard);
 void init_dagmc_surfaces(std::shared_ptr<dagmcMetaData> dmd_ptr,
                          moab::EntityHandle& graveyard);
 int get_material_id(moab::EntityHandle vol_handle,
                     std::shared_ptr<dagmcMetaData> dmd_ptr,
-                    bool using_uwuw,
                     std::shared_ptr<UWUW> uwuw_ptr,
                     moab::EntityHandle& graveyard);
 void free_memory_dagmc();

@@ -170,7 +170,7 @@ void load_dagmc_geometry()
 
   // Create a material library
   std::shared_ptr<UWUW> uwuw_ptr;
-  bool using_uwuw = init_uwuw_materials(uwuw_ptr);
+  init_uwuw_materials(uwuw_ptr);
 
   // Parse DAGMC metadata
   std::shared_ptr<dagmcMetaData> dmd_ptr;
@@ -178,7 +178,7 @@ void load_dagmc_geometry()
 
   // Initialise cells and save which entity is the graveyard
   moab::EntityHandle graveyard = 0;
-  init_dagmc_cells(dmd_ptr,using_uwuw,uwuw_ptr,graveyard);
+  init_dagmc_cells(dmd_ptr,uwuw_ptr,graveyard);
 
   // Initialise surfaces
   init_dagmc_surfaces(dmd_ptr,graveyard);
@@ -218,24 +218,18 @@ void init_dagmc_metadata(std::shared_ptr<dagmcMetaData>& dmd_ptr)
   dmd_ptr->load_property_data();
 }
 
-bool init_uwuw_materials(std::shared_ptr<UWUW>& uwuw_ptr)
+void init_uwuw_materials(std::shared_ptr<UWUW>& uwuw_ptr)
 {
   // Create UWUW instance and store pointer
   uwuw_ptr = std::make_shared<UWUW>(dagmc_file().c_str());
 
-  // check for uwuw material definitions
-  bool using_uwuw = !uwuw_ptr->material_library.empty();
-
   // Notify user if UWUW materials are going to be used
-  if (using_uwuw) {
+  if (!uwuw_ptr->material_library.empty()) {
     write_message("Found UWUW Materials in the DAGMC geometry file.", 6);
   }
-
-  return using_uwuw;
 }
 
 void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
-                      bool using_uwuw,
                       std::shared_ptr<UWUW> uwuw_ptr,
                       moab::EntityHandle& graveyard)
 {
@@ -276,8 +270,7 @@ void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
     }
 
     // Set cell material
-    int mat_id = get_material_id(vol_handle,dmd_ptr,using_uwuw,
-                                 uwuw_ptr,graveyard);
+    int mat_id = get_material_id(vol_handle,dmd_ptr,uwuw_ptr,graveyard);
 
     c->material_.push_back(mat_id);
 
@@ -369,7 +362,6 @@ void init_dagmc_surfaces(std::shared_ptr<dagmcMetaData> dmd_ptr,
 
 int get_material_id(moab::EntityHandle vol_handle,
                     std::shared_ptr<dagmcMetaData> dmd_ptr,
-                    bool using_uwuw,
                     std::shared_ptr<UWUW> uwuw_ptr,
                     moab::EntityHandle& graveyard)
 {
@@ -392,7 +384,7 @@ int get_material_id(moab::EntityHandle vol_handle,
   }
 
   // Find id for non-void mats
-  if (using_uwuw) {
+  if (!uwuw_ptr->material_library.empty()) {
     // Look up material in uwuw if present
     return uwuw_assign_material(vol_handle,dmd_ptr,uwuw_ptr);
   }
