@@ -28,6 +28,7 @@ void load_dagmc_geometry();
 void init_dagmc();
 void init_dagmc_metadata(std::shared_ptr<dagmcMetaData>& dmd_ptr);
 void init_uwuw_materials(std::shared_ptr<UWUW>& uwuw_ptr);
+void init_dagmc_universe(int32_t dagmc_univ_id);
 void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
                       std::shared_ptr<UWUW> uwuw_ptr,
                       moab::EntityHandle& graveyard);

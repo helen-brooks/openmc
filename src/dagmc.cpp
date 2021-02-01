@@ -229,12 +229,24 @@ void init_uwuw_materials(std::shared_ptr<UWUW>& uwuw_ptr)
   }
 }
 
+void init_dagmc_universe(int32_t dagmc_univ_id)
+{
+  // Populate the Universe vector and dict
+  auto it = model::universe_map.find(dagmc_univ_id);
+  if (it == model::universe_map.end()) {
+    model::universes.push_back(std::make_unique<Universe>());
+    model::universes.back()->id_ = dagmc_univ_id;
+    model::universe_map[dagmc_univ_id] = model::universes.size() - 1;
+  }
+}
+
 void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
                       std::shared_ptr<UWUW> uwuw_ptr,
                       moab::EntityHandle& graveyard)
 {
   // Universe is always 0 for DAGMC runs
   int32_t dagmc_univ_id = 0;
+  init_dagmc_universe(dagmc_univ_id);
 
   // Get number of cells (volumes) from DAGMC
   int n_cells = model::DAG->num_entities(3);
@@ -244,30 +256,24 @@ void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
 
     // DagMC indices are offset by one (convention stemming from MCNP)
     unsigned int index = i+1;
-
-    moab::EntityHandle vol_handle = model::DAG->entity_by_index(3, index);
+    int id= model::DAG->id_by_index(3, index);
 
     // set cell ids using global IDs
     DAGCell* c = new DAGCell();
     c->dag_index_ = index;
-    c->id_ = model::DAG->id_by_index(3, c->dag_index_);
+    c->id_ = id;
     c->dagmc_ptr_ = model::DAG;
     c->universe_ = dagmc_univ_id; // set to zero for now
     c->fill_ = C_NONE; // no fill, single universe
 
+    // Save cell
     model::cells.emplace_back(c);
     model::cell_map[c->id_] = i;
+    model::universes[model::universe_map[dagmc_univ_id]]->cells_.push_back(i);
 
-    // Populate the Universe vector and dict
-    auto it = model::universe_map.find(dagmc_univ_id);
-    if (it == model::universe_map.end()) {
-      model::universes.push_back(std::make_unique<Universe>());
-      model::universes.back()->id_ = dagmc_univ_id;
-      model::universes.back()->cells_.push_back(i);
-      model::universe_map[dagmc_univ_id] = model::universes.size() - 1;
-    } else {
-      model::universes[it->second]->cells_.push_back(i);
-    }
+
+    // Set cell properties based on metadata
+    moab::EntityHandle vol_handle = model::DAG->entity_by_index(3, index);
 
     // Set cell material
     int mat_id = get_material_id(vol_handle,dmd_ptr,uwuw_ptr,graveyard);
@@ -278,6 +284,7 @@ void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
       double temp = get_material_temperature(vol_handle,mat_id);
       c->sqrtkT_.push_back(std::sqrt(K_BOLTZMANN * temp));
     };
+
 
   }
 
