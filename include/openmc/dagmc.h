@@ -34,6 +34,11 @@ void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
                       moab::EntityHandle& graveyard);
 void init_dagmc_surfaces(std::shared_ptr<dagmcMetaData> dmd_ptr,
                          moab::EntityHandle& graveyard);
+void create_dagmc_cell(int index,int32_t dagmc_univ_id);
+void set_dagmc_cell_properties(int index,
+                               std::shared_ptr<dagmcMetaData> dmd_ptr,
+                               std::shared_ptr<UWUW> uwuw_ptr,
+                               moab::EntityHandle& graveyard);
 int get_material_id(moab::EntityHandle vol_handle,
                     std::shared_ptr<dagmcMetaData> dmd_ptr,
                     std::shared_ptr<UWUW> uwuw_ptr,

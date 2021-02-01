@@ -240,6 +240,9 @@ void init_dagmc_universe(int32_t dagmc_univ_id)
   }
 }
 
+// DagMC indices are offset by one (convention stemming from MCNP)
+inline int get_dagmc_index(int index) { return index+1; }
+
 void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
                       std::shared_ptr<UWUW> uwuw_ptr,
                       moab::EntityHandle& graveyard)
@@ -253,39 +256,12 @@ void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
 
   // Loop over the cells
   for (int i = 0; i < n_cells; i++) {
+    // Create a new dagmc cell
+    create_dagmc_cell(i,dagmc_univ_id);
 
-    // DagMC indices are offset by one (convention stemming from MCNP)
-    unsigned int index = i+1;
-    int id= model::DAG->id_by_index(3, index);
-
-    // set cell ids using global IDs
-    DAGCell* c = new DAGCell();
-    c->dag_index_ = index;
-    c->id_ = id;
-    c->dagmc_ptr_ = model::DAG;
-    c->universe_ = dagmc_univ_id; // set to zero for now
-    c->fill_ = C_NONE; // no fill, single universe
-
-    // Save cell
-    model::cells.emplace_back(c);
-    model::cell_map[c->id_] = i;
-    model::universes[model::universe_map[dagmc_univ_id]]->cells_.push_back(i);
-
-
-    // Set cell properties based on metadata
-    moab::EntityHandle vol_handle = model::DAG->entity_by_index(3, index);
-
-    // Set cell material
-    int mat_id = get_material_id(vol_handle,dmd_ptr,uwuw_ptr,graveyard);
-    c->material_.push_back(mat_id);
-
-    // Set cell temperature if not a void material
-    if (mat_id != MATERIAL_VOID){
-      double temp = get_material_temperature(vol_handle,mat_id);
-      c->sqrtkT_.push_back(std::sqrt(K_BOLTZMANN * temp));
-    };
-
-
+    // Set the cell's material properties
+    // Save handle if this is the graveyard
+    set_dagmc_cell_properties(i,dmd_ptr,uwuw_ptr,graveyard);
   }
 
   // allocate the cell overlap count if necessary
@@ -352,6 +328,49 @@ void init_dagmc_surfaces(std::shared_ptr<dagmcMetaData> dmd_ptr,
     model::surfaces.emplace_back(s);
     model::surface_map[s->id_] = i;
   }
+}
+
+void create_dagmc_cell(int index,int32_t dagmc_univ_id)
+{
+
+  unsigned int dag_index = get_dagmc_index(index);
+  int id= model::DAG->id_by_index(3, dag_index);
+
+  // Set cell ids using global IDs
+  DAGCell* c = new DAGCell();
+  c->dag_index_ = dag_index;
+  c->id_ = id;
+  c->dagmc_ptr_ = model::DAG;
+  c->universe_ = dagmc_univ_id; // set to zero for now
+  c->fill_ = C_NONE; // no fill, single universe
+
+  // Save cell
+  model::cells.emplace_back(c);
+  model::cell_map[c->id_] = index;
+  model::universes[model::universe_map[dagmc_univ_id]]->cells_.push_back(index);
+}
+
+void set_dagmc_cell_properties(int index,
+                               std::shared_ptr<dagmcMetaData> dmd_ptr,
+                               std::shared_ptr<UWUW> uwuw_ptr,
+                               moab::EntityHandle& graveyard)
+{
+  // Fetch a pointer to this cell
+  Cell* c = model::cells.at(index).get();
+
+  // Set cell properties based on metadata
+  unsigned int dag_index = get_dagmc_index(index);
+  moab::EntityHandle vol_handle = model::DAG->entity_by_index(3,dag_index);
+
+  // Set cell material
+  int mat_id = get_material_id(vol_handle,dmd_ptr,uwuw_ptr,graveyard);
+  c->material_.push_back(mat_id);
+
+  // Set cell temperature if not a void material
+  if (mat_id != MATERIAL_VOID){
+    double temp = get_material_temperature(vol_handle,mat_id);
+    c->sqrtkT_.push_back(std::sqrt(K_BOLTZMANN * temp));
+  };
 }
 
 int get_material_id(moab::EntityHandle vol_handle,
