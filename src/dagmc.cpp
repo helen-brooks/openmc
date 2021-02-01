@@ -161,101 +161,11 @@ void load_dagmc_geometry()
   std::shared_ptr<dagmcMetaData> dmd_ptr;
   init_dagmc_metadata(dmd_ptr);
 
-  int32_t dagmc_univ_id = 0; // universe is always 0 for DAGMC runs
-
   // --- Cells (Volumes) ---
 
-  // initialize cell objects
-  int n_cells = model::DAG->num_entities(3);
+  // Initialise cells and save which entity is the graveyard
   moab::EntityHandle graveyard = 0;
-  for (int i = 0; i < n_cells; i++) {
-    moab::EntityHandle vol_handle = model::DAG->entity_by_index(3, i+1);
-
-    // set cell ids using global IDs
-    DAGCell* c = new DAGCell();
-    c->dag_index_ = i+1;
-    c->id_ = model::DAG->id_by_index(3, c->dag_index_);
-    c->dagmc_ptr_ = model::DAG;
-    c->universe_ = dagmc_univ_id; // set to zero for now
-    c->fill_ = C_NONE; // no fill, single universe
-
-    model::cells.emplace_back(c);
-    model::cell_map[c->id_] = i;
-
-    // Populate the Universe vector and dict
-    auto it = model::universe_map.find(dagmc_univ_id);
-    if (it == model::universe_map.end()) {
-      model::universes.push_back(std::make_unique<Universe>());
-      model::universes.back()->id_ = dagmc_univ_id;
-      model::universes.back()->cells_.push_back(i);
-      model::universe_map[dagmc_univ_id] = model::universes.size() - 1;
-    } else {
-      model::universes[it->second]->cells_.push_back(i);
-    }
-
-    // MATERIALS
-
-    // determine volume material assignment
-    std::string mat_str = dmd_ptr->get_volume_property("material", vol_handle);
-
-    if (mat_str.empty()) {
-      fatal_error(fmt::format("Volume {} has no material assignment.", c->id_));
-    }
-
-    to_lower(mat_str);
-
-    if (mat_str == "graveyard") {
-      graveyard = vol_handle;
-    }
-
-    // material void checks
-    if (mat_str == "void" || mat_str == "vacuum" || mat_str == "graveyard") {
-      c->material_.push_back(MATERIAL_VOID);
-    } else {
-      if (using_uwuw) {
-        // lookup material in uwuw if present
-        std::string uwuw_mat = dmd_ptr->volume_material_property_data_eh[vol_handle];
-        if (uwuw_ptr->material_library.count(uwuw_mat) != 0) {
-          // Note: material numbers are set by UWUW
-          int mat_number = uwuw_ptr->material_library.get_material(uwuw_mat).metadata["mat_number"].asInt();
-          c->material_.push_back(mat_number);
-        } else {
-          fatal_error(fmt::format("Material with value {} not found in the "
-            "UWUW material library", mat_str));
-        }
-      } else {
-        legacy_assign_material(mat_str, c);
-      }
-    }
-
-    // check for temperature assignment
-    std::string temp_value;
-
-    // no temperature if void
-    if (c->material_[0] == MATERIAL_VOID) continue;
-
-    // assign cell temperature
-    const auto& mat = model::materials[model::material_map.at(c->material_[0])];
-    if (model::DAG->has_prop(vol_handle, "temp")) {
-      moab::ErrorCode rval = model::DAG->prop_value(vol_handle, "temp", temp_value);
-      MB_CHK_ERR_CONT(rval);
-      double temp = std::stod(temp_value);
-      c->sqrtkT_.push_back(std::sqrt(K_BOLTZMANN * temp));
-    } else {
-      c->sqrtkT_.push_back(std::sqrt(K_BOLTZMANN * mat->temperature()));
-    }
-
-  }
-
-  // allocate the cell overlap count if necessary
-  if (settings::check_overlaps) {
-    model::overlap_check_count.resize(model::cells.size(), 0);
-  }
-
-  if (!graveyard) {
-    warning("No graveyard volume found in the DagMC model."
-            "This may result in lost particles and rapid simulation failure.");
-  }
+  init_dagmc_cells(dmd_ptr,using_uwuw,uwuw_ptr,graveyard);
 
   // --- Surfaces ---
 
@@ -358,6 +268,112 @@ bool init_uwuw_materials(std::shared_ptr<UWUW>& uwuw_ptr)
   }
 
   return using_uwuw;
+}
+
+void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
+                      bool using_uwuw,
+                      std::shared_ptr<UWUW> uwuw_ptr,
+                      moab::EntityHandle& graveyard)
+{
+  // Universe is always 0 for DAGMC runs
+  int32_t dagmc_univ_id = 0;
+
+  // Get number of cells (volumes) from DAGMC
+  int n_cells = model::DAG->num_entities(3);
+
+  // Loop over the cells
+  for (int i = 0; i < n_cells; i++) {
+
+    // DagMC indices are offset by one (convention stemming from MCNP)
+    unsigned int index = i+1;
+
+    moab::EntityHandle vol_handle = model::DAG->entity_by_index(3, index);
+
+    // set cell ids using global IDs
+    DAGCell* c = new DAGCell();
+    c->dag_index_ = index;
+    c->id_ = model::DAG->id_by_index(3, c->dag_index_);
+    c->dagmc_ptr_ = model::DAG;
+    c->universe_ = dagmc_univ_id; // set to zero for now
+    c->fill_ = C_NONE; // no fill, single universe
+
+    model::cells.emplace_back(c);
+    model::cell_map[c->id_] = i;
+
+    // Populate the Universe vector and dict
+    auto it = model::universe_map.find(dagmc_univ_id);
+    if (it == model::universe_map.end()) {
+      model::universes.push_back(std::make_unique<Universe>());
+      model::universes.back()->id_ = dagmc_univ_id;
+      model::universes.back()->cells_.push_back(i);
+      model::universe_map[dagmc_univ_id] = model::universes.size() - 1;
+    } else {
+      model::universes[it->second]->cells_.push_back(i);
+    }
+
+    // MATERIALS
+
+    // determine volume material assignment
+    std::string mat_str = dmd_ptr->get_volume_property("material", vol_handle);
+
+    if (mat_str.empty()) {
+      fatal_error(fmt::format("Volume {} has no material assignment.", c->id_));
+    }
+
+    to_lower(mat_str);
+
+    if (mat_str == "graveyard") {
+      graveyard = vol_handle;
+    }
+
+    // material void checks
+    if (mat_str == "void" || mat_str == "vacuum" || mat_str == "graveyard") {
+      c->material_.push_back(MATERIAL_VOID);
+    } else {
+      if (using_uwuw) {
+        // lookup material in uwuw if present
+        std::string uwuw_mat = dmd_ptr->volume_material_property_data_eh[vol_handle];
+        if (uwuw_ptr->material_library.count(uwuw_mat) != 0) {
+          // Note: material numbers are set by UWUW
+          int mat_number = uwuw_ptr->material_library.get_material(uwuw_mat).metadata["mat_number"].asInt();
+          c->material_.push_back(mat_number);
+        } else {
+          fatal_error(fmt::format("Material with value {} not found in the "
+            "UWUW material library", mat_str));
+        }
+      } else {
+        legacy_assign_material(mat_str, c);
+      }
+    }
+
+    // check for temperature assignment
+    std::string temp_value;
+
+    // no temperature if void
+    if (c->material_[0] == MATERIAL_VOID) continue;
+
+    // assign cell temperature
+    const auto& mat = model::materials[model::material_map.at(c->material_[0])];
+    if (model::DAG->has_prop(vol_handle, "temp")) {
+      moab::ErrorCode rval = model::DAG->prop_value(vol_handle, "temp", temp_value);
+      MB_CHK_ERR_CONT(rval);
+      double temp = std::stod(temp_value);
+      c->sqrtkT_.push_back(std::sqrt(K_BOLTZMANN * temp));
+    } else {
+      c->sqrtkT_.push_back(std::sqrt(K_BOLTZMANN * mat->temperature()));
+    }
+
+  }
+
+  // allocate the cell overlap count if necessary
+  if (settings::check_overlaps) {
+    model::overlap_check_count.resize(model::cells.size(), 0);
+  }
+
+  if (!graveyard) {
+    warning("No graveyard volume found in the DagMC model."
+            "This may result in lost particles and rapid simulation failure.");
+  }
 }
 
 void read_geometry_dagmc()
