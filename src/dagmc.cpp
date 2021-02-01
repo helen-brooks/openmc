@@ -151,8 +151,6 @@ void load_dagmc_geometry()
   // Set the model::DAG pointer and initialise mesh data
   init_dagmc();
 
-  // --- Materials ---
-
   // Create a material library
   std::shared_ptr<UWUW> uwuw_ptr;
   bool using_uwuw = init_uwuw_materials(uwuw_ptr);
@@ -161,63 +159,12 @@ void load_dagmc_geometry()
   std::shared_ptr<dagmcMetaData> dmd_ptr;
   init_dagmc_metadata(dmd_ptr);
 
-  // --- Cells (Volumes) ---
-
   // Initialise cells and save which entity is the graveyard
   moab::EntityHandle graveyard = 0;
   init_dagmc_cells(dmd_ptr,using_uwuw,uwuw_ptr,graveyard);
 
-  // --- Surfaces ---
-
-  // initialize surface objects
-  int n_surfaces = model::DAG->num_entities(2);
-
-  for (int i = 0; i < n_surfaces; i++) {
-    moab::EntityHandle surf_handle = model::DAG->entity_by_index(2, i+1);
-
-    // set cell ids using global IDs
-    DAGSurface* s = new DAGSurface();
-    s->dag_index_ = i+1;
-    s->id_ = model::DAG->id_by_index(2, s->dag_index_);
-    s->dagmc_ptr_ = model::DAG;
-
-    if (contains(settings::source_write_surf_id, s->id_)) {
-      s->surf_source_ = true;
-    }
-
-    // set BCs
-    std::string bc_value = dmd_ptr->get_surface_property("boundary", surf_handle);
-    to_lower(bc_value);
-    if (bc_value.empty() || bc_value == "transmit" || bc_value == "transmission") {
-      // Leave the bc_ a nullptr
-    } else if (bc_value == "vacuum") {
-      s->bc_ = std::make_shared<VacuumBC>();
-    } else if (bc_value == "reflective" || bc_value == "reflect" || bc_value == "reflecting") {
-      s->bc_ = std::make_shared<ReflectiveBC>();
-    } else if (bc_value == "white") {
-      fatal_error("White boundary condition not supported in DAGMC.");
-    } else if (bc_value == "periodic") {
-      fatal_error("Periodic boundary condition not supported in DAGMC.");
-    } else {
-      fatal_error(fmt::format("Unknown boundary condition \"{}\" specified "
-        "on surface {}", bc_value, s->id_));
-    }
-
-    // graveyard check
-    moab::Range parent_vols;
-    moab::ErrorCode rval = model::DAG->moab_instance()->get_parent_meshsets(surf_handle, parent_vols);
-    MB_CHK_ERR_CONT(rval);
-
-    // if this surface belongs to the graveyard
-    if (graveyard && parent_vols.find(graveyard) != parent_vols.end()) {
-      // set graveyard surface BC's to vacuum
-      s->bc_ = std::make_shared<VacuumBC>();
-    }
-
-    // add to global array and map
-    model::surfaces.emplace_back(s);
-    model::surface_map[s->id_] = i;
-  }
+  // Initialise surfaces
+  init_dagmc_surfaces(dmd_ptr,graveyard);
 
   return;
 }
@@ -373,6 +320,61 @@ void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
   if (!graveyard) {
     warning("No graveyard volume found in the DagMC model."
             "This may result in lost particles and rapid simulation failure.");
+  }
+}
+
+void init_dagmc_surfaces(std::shared_ptr<dagmcMetaData> dmd_ptr,
+                         moab::EntityHandle& graveyard)
+{
+  // Get number of surfaces from DAGMC
+  int n_surfaces = model::DAG->num_entities(2);
+
+  // Loop over the surfaces
+  for (int i = 0; i < n_surfaces; i++) {
+    moab::EntityHandle surf_handle = model::DAG->entity_by_index(2, i+1);
+
+    // set cell ids using global IDs
+    DAGSurface* s = new DAGSurface();
+    s->dag_index_ = i+1;
+    s->id_ = model::DAG->id_by_index(2, s->dag_index_);
+    s->dagmc_ptr_ = model::DAG;
+
+    if (contains(settings::source_write_surf_id, s->id_)) {
+      s->surf_source_ = true;
+    }
+
+    // set BCs
+    std::string bc_value = dmd_ptr->get_surface_property("boundary", surf_handle);
+    to_lower(bc_value);
+    if (bc_value.empty() || bc_value == "transmit" || bc_value == "transmission") {
+      // Leave the bc_ a nullptr
+    } else if (bc_value == "vacuum") {
+      s->bc_ = std::make_shared<VacuumBC>();
+    } else if (bc_value == "reflective" || bc_value == "reflect" || bc_value == "reflecting") {
+      s->bc_ = std::make_shared<ReflectiveBC>();
+    } else if (bc_value == "white") {
+      fatal_error("White boundary condition not supported in DAGMC.");
+    } else if (bc_value == "periodic") {
+      fatal_error("Periodic boundary condition not supported in DAGMC.");
+    } else {
+      fatal_error(fmt::format("Unknown boundary condition \"{}\" specified "
+        "on surface {}", bc_value, s->id_));
+    }
+
+    // graveyard check
+    moab::Range parent_vols;
+    moab::ErrorCode rval = model::DAG->moab_instance()->get_parent_meshsets(surf_handle, parent_vols);
+    MB_CHK_ERR_CONT(rval);
+
+    // if this surface belongs to the graveyard
+    if (graveyard && parent_vols.find(graveyard) != parent_vols.end()) {
+      // set graveyard surface BC's to vacuum
+      s->bc_ = std::make_shared<VacuumBC>();
+    }
+
+    // add to global array and map
+    model::surfaces.emplace_back(s);
+    model::surface_map[s->id_] = i;
   }
 }
 

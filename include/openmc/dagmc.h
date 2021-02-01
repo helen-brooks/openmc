@@ -32,6 +32,8 @@ void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
                       bool using_uwuw,
                       std::shared_ptr<UWUW> uwuw_ptr,
                       moab::EntityHandle& graveyard);
+void init_dagmc_surfaces(std::shared_ptr<dagmcMetaData> dmd_ptr,
+                         moab::EntityHandle& graveyard);
 void free_memory_dagmc();
 void read_geometry_dagmc();
 bool read_uwuw_materials(pugi::xml_document& doc);
