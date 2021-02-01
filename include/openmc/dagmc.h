@@ -23,6 +23,7 @@ namespace model {
 //==============================================================================
 
 void load_dagmc_geometry();
+void init_dagmc();
 void free_memory_dagmc();
 void read_geometry_dagmc();
 bool read_uwuw_materials(pugi::xml_document& doc);

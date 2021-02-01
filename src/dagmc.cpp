@@ -151,15 +151,14 @@ void legacy_assign_material(std::string mat_string, DAGCell* c)
 
 void load_dagmc_geometry()
 {
-  if (!model::DAG) {
-    model::DAG = new moab::DagMC();
-  }
+
+  // Set the model::DAG pointer and initialise mesh data
+  init_dagmc();
 
   // --- Materials ---
 
   // create uwuw instance
-  auto filename = dagmc_file();
-  UWUW uwuw(filename.c_str());
+  UWUW uwuw(dagmc_file().c_str());
 
   // check for uwuw material definitions
   bool using_uwuw = !uwuw.material_library.empty();
@@ -171,14 +170,6 @@ void load_dagmc_geometry()
 
   int32_t dagmc_univ_id = 0; // universe is always 0 for DAGMC runs
 
-  // load the DAGMC geometry
-  moab::ErrorCode rval = model::DAG->load_file(filename.c_str());
-  MB_CHK_ERR_CONT(rval);
-
-  // initialize acceleration data structures
-  rval = model::DAG->init_OBBTree();
-  MB_CHK_ERR_CONT(rval);
-
   // parse model metadata
   dagmcMetaData DMD(model::DAG, false, false);
   DMD.load_property_data();
@@ -186,7 +177,7 @@ void load_dagmc_geometry()
   std::vector<std::string> keywords {"temp"};
   std::map<std::string, std::string> dum;
   std::string delimiters = ":/";
-  rval = model::DAG->parse_properties(keywords, dum, delimiters.c_str());
+  moab::ErrorCode rval = rval = model::DAG->parse_properties(keywords, dum, delimiters.c_str());
   MB_CHK_ERR_CONT(rval);
 
   // --- Cells (Volumes) ---
@@ -337,6 +328,24 @@ void load_dagmc_geometry()
 
   return;
 }
+
+void init_dagmc()
+{
+
+  if (!model::DAG) {
+    model::DAG = new moab::DagMC();
+  }
+
+  // load the DAGMC geometry
+  moab::ErrorCode rval = model::DAG->load_file(dagmc_file().c_str());
+  MB_CHK_ERR_CONT(rval);
+
+  // initialize acceleration data structures
+  rval = model::DAG->init_OBBTree();
+  MB_CHK_ERR_CONT(rval);
+
+}
+
 
 void read_geometry_dagmc()
 {
