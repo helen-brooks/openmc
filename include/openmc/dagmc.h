@@ -37,6 +37,7 @@ int get_material_id(moab::EntityHandle vol_handle,
                     std::shared_ptr<dagmcMetaData> dmd_ptr,
                     std::shared_ptr<UWUW> uwuw_ptr,
                     moab::EntityHandle& graveyard);
+double get_material_temperature(moab::EntityHandle vol_handle,int mat_id);
 void free_memory_dagmc();
 void read_geometry_dagmc();
 bool read_uwuw_materials(pugi::xml_document& doc);

@@ -271,26 +271,13 @@ void init_dagmc_cells(std::shared_ptr<dagmcMetaData> dmd_ptr,
 
     // Set cell material
     int mat_id = get_material_id(vol_handle,dmd_ptr,uwuw_ptr,graveyard);
-
     c->material_.push_back(mat_id);
 
-
-    // check for temperature assignment
-    std::string temp_value;
-
-    // no temperature if void
-    if (c->material_[0] == MATERIAL_VOID) continue;
-
-    // assign cell temperature
-    const auto& mat = model::materials[model::material_map.at(c->material_[0])];
-    if (model::DAG->has_prop(vol_handle, "temp")) {
-      moab::ErrorCode rval = model::DAG->prop_value(vol_handle, "temp", temp_value);
-      MB_CHK_ERR_CONT(rval);
-      double temp = std::stod(temp_value);
+    // Set cell temperature if not a void material
+    if (mat_id != MATERIAL_VOID){
+      double temp = get_material_temperature(vol_handle,mat_id);
       c->sqrtkT_.push_back(std::sqrt(K_BOLTZMANN * temp));
-    } else {
-      c->sqrtkT_.push_back(std::sqrt(K_BOLTZMANN * mat->temperature()));
-    }
+    };
 
   }
 
@@ -392,6 +379,20 @@ int get_material_id(moab::EntityHandle vol_handle,
     return legacy_assign_material(mat_str);
   }
 
+}
+
+double get_material_temperature(moab::EntityHandle vol_handle,int mat_id)
+{
+  if (model::DAG->has_prop(vol_handle, "temp")) {
+    // check for temperature assignment
+    std::string temp_value;
+    moab::ErrorCode rval = model::DAG->prop_value(vol_handle, "temp", temp_value);
+    MB_CHK_ERR_CONT(rval);
+    return std::stod(temp_value);
+  } else {
+    const auto& mat = model::materials[model::material_map.at(mat_id)];
+    return mat->temperature();
+  }
 }
 
 void read_geometry_dagmc()
